@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+
+  <meta charset="UTF-8">
+  <title>ControlDeV</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+
+</head>
+<body>
+  <h1>CtrlDeV</h1>
+
+<!-- ======== FORMULÁRIO DE CADASTRO (COLAPSADO) ======== -->
+<section id="form-section">
+  <button id="toggleFormBtn" class="add-btn">➕ Adicionar comando</button>
+
+  <form id="command-form" class="collapsed">
+    <input type="text" id="title" placeholder="Título" required>
+    <textarea id="command_text" placeholder="Comando" required></textarea>
+    <textarea id="description" placeholder="Descrição (opcional)"></textarea>
+    <input type="text" id="tags" placeholder="Tags (ex: python,git,odoo)">
+
+    <div class="category-group">
+      <select id="category" required>
+        <option value="">Selecione uma categoria</option>
+      </select>
+      <button type="button" id="toggleCategoryBtn">Nova</button>
+    </div>
+
+    <div class="actions">
+      <button type="submit">💾 Salvar</button>
+      <button type="button" id="cancelFormBtn" class="cancel-btn">Cancelar</button>
+    </div>
+  </form>
+</section>
+
+
+  <!-- ======== FILTROS E LISTAGEM ======== -->
+  <section id="list-section">
+    <h2>Listagem de Comandos</h2>
+
+    <div class="filters">
+      <select id="filter-category">
+        <option value="">Todas as categorias</option>
+      </select>
+      <input type="text" id="search-input" placeholder="Pesquisar por nome ou tag...">
+      <button id="clear-filters">Limpar filtros</button>
+    </div>
+
+    <div id="commands"></div>
+  </section>
+
+  <script>
+    const API = "http://localhost:5001";
+    let editingCommandId = null;
+
+    const categorySelect = document.getElementById("category");
+    const filterCategory = document.getElementById("filter-category");
+    const searchInput = document.getElementById("search-input");
+    const clearFilters = document.getElementById("clear-filters");
+    const commandsContainer = document.getElementById("commands");
+    const commandForm = document.getElementById("command-form");
+    const toggleCategoryBtn = document.getElementById("toggleCategoryBtn");
+
+    let isAddingCategory = false;
+
+    // ================== CATEGORIAS ==================
+    async function loadCategories() {
+      const res = await fetch(`${API}/categories`);
+      const categories = await res.json();
+
+      [categorySelect, filterCategory].forEach(select => {
+        select.innerHTML = '<option value="">Selecione uma categoria</option>';
+        categories.forEach(cat => {
+          const opt = document.createElement("option");
+          opt.value = cat.id;
+          opt.textContent = cat.name;
+          select.appendChild(opt);
+        });
+      });
+    }
+
+    toggleCategoryBtn.addEventListener("click", async () => {
+      if (!isAddingCategory) {
+        // Troca o select por input
+        const input = document.createElement("input");
+        input.type = "text";
+        input.id = "new-category";
+        input.placeholder = "Nome da nova categoria";
+        categorySelect.replaceWith(input);
+        toggleCategoryBtn.textContent = "Salvar";
+        isAddingCategory = true;
+      } else {
+        // Salva nova categoria
+        const input = document.getElementById("new-category");
+        const name = input.value.trim();
+        if (!name) return alert("Digite um nome válido.");
+
+        await fetch(`${API}/categories`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+
+        // Recarrega as categorias e restaura o select
+        await loadCategories();
+        const newSelect = document.createElement("select");
+        newSelect.id = "category";
+        newSelect.required = true;
+        newSelect.innerHTML = categorySelect.innerHTML;
+        input.replaceWith(newSelect);
+        toggleCategoryBtn.textContent = "Nova";
+        isAddingCategory = false;
+      }
+    });
+
+    // ================== SALVAR COMANDO ==================
+    document.getElementById("command-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const title = document.getElementById("title").value;
+    const command_text = document.getElementById("command_text").value;
+    const description = document.getElementById("description").value;
+    const tags = document.getElementById("tags").value.split(",").map(t => t.trim());
+    const category_id = document.getElementById("category").value;
+    const category_name = document.getElementById("category").options[document.getElementById("category").selectedIndex].text;
+
+    if (!category_id) {
+      alert("Selecione uma categoria antes de salvar!");
+      return;
+    }
+
+    const payload = { title, command_text, description, tags, category_name, category_id };
+    // Se estiver editando
+    if (editingCommandId) {
+      await fetch(`${API}/commands/${editingCommandId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      alert("Comando atualizado com sucesso!");
+    } else {
+      await fetch(`${API}/commands`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      alert("Comando salvo com sucesso!");
+    }
+
+    // Reseta
+    e.target.reset();
+    editingCommandId = null;
+    commandFormEl.classList.add("collapsed");
+    toggleFormBtn.style.display = "inline-block";
+    commandFormEl.querySelector("button[type='submit']").textContent = "💾 Salvar";
+    loadCommands();
+  });
+
+
+    // ================== LISTAR E FILTRAR ==================
+    async function loadCommands(filters = {}) {
+      const res = await fetch(`${API}/commands`);
+      const data = await res.json();
+
+      let filtered = data;
+
+      if (filters.category) {
+        filtered = filtered.filter(cmd => cmd.category_id == filters.category);
+      }
+      if (filters.search) {
+        const term = filters.search.toLowerCase();
+        filtered = filtered.filter(cmd =>
+          cmd.title.toLowerCase().includes(term) ||
+          (cmd.tags && cmd.tags.join(", ").toLowerCase().includes(term))
+        );
+      }
+
+      commandsContainer.innerHTML = "";
+      if (filtered.length === 0) {
+        commandsContainer.innerHTML = "<p>Nenhum comando encontrado.</p>";
+        return;
+      }
+
+      filtered.forEach(cmd => {
+      const div = document.createElement("div");
+      div.classList.add("command");
+      div.innerHTML = `
+        <h3>${cmd.title}</h3>
+        <div class="code-block">
+          <pre><code>${cmd.command_text}</code></pre>
+          <button class="copy-btn" data-code="${cmd.command_text.replace(/"/g, "&quot;")}">📋 Copiar</button>
+        </div>
+        <p>${cmd.description || ""}</p>
+        <small>Tags: ${(cmd.tags || []).join(", ")}</small>
+      `;
+
+      div.addEventListener("click", (e) => {
+        // Se o clique foi dentro de um botão de cópia, ignore
+        if (e.target.closest(".copy-btn")) return;
+        loadCommandForEdit(cmd);
+      });
+
+      commandsContainer.appendChild(div);
+    });
+
+    }
+
+    function loadCommandForEdit(cmd) {
+      // Se o formulário estiver colapsado, expande
+      commandFormEl.classList.remove("collapsed");
+      toggleFormBtn.style.display = "none";
+
+      // Preenche os campos
+      document.getElementById("title").value = cmd.title;
+      document.getElementById("command_text").value = cmd.command_text;
+      document.getElementById("description").value = cmd.description || "";
+      document.getElementById("tags").value = (cmd.tags || []).join(", ");
+      
+      // Seleciona categoria se existir
+      if (cmd.category_id) {
+        document.getElementById("category").value = cmd.category_id;
+      }
+
+      // Armazena o ID atual
+      editingCommandId = cmd.id;
+
+      // Atualiza o texto do botão principal
+      commandFormEl.querySelector("button[type='submit']").textContent = "✏️ Atualizar";
+    }
+
+
+    // Filtros
+    filterCategory.addEventListener("change", () => {
+      loadCommands({
+        category: filterCategory.value,
+        search: searchInput.value
+      });
+    });
+
+    searchInput.addEventListener("input", () => {
+      loadCommands({
+        category: filterCategory.value,
+        search: searchInput.value
+      });
+    });
+
+    clearFilters.addEventListener("click", () => {
+      filterCategory.value = "";
+      searchInput.value = "";
+      loadCommands();
+    });
+
+    // ================== FORMULÁRIO COLAPSÁVEL ==================
+    const toggleFormBtn = document.getElementById("toggleFormBtn");
+    const commandFormEl = document.getElementById("command-form");
+    const cancelFormBtn = document.getElementById("cancelFormBtn");
+
+    toggleFormBtn.addEventListener("click", () => {
+      commandFormEl.classList.toggle("collapsed");
+      toggleFormBtn.style.display = "none";
+    });
+
+    cancelFormBtn.addEventListener("click", () => {
+      commandFormEl.classList.add("collapsed");
+      toggleFormBtn.style.display = "inline-block";
+      commandForm.reset();
+      toggleCategoryBtn.textContent = "Nova";
+      loadCategories();
+      
+    });
+
+    // Evento de cópia (delegado)
+    commandsContainer.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".copy-btn");
+      if (!btn) return; // Ignora outros cliques
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      const code = btn.dataset.code || "";
+      try {
+        await navigator.clipboard.writeText(code);
+        btn.innerText = "✅";
+        btn.style.background = "#2e7d32";
+        btn.style.transform = "scale(0.95)";
+        setTimeout(() => {
+          btn.innerText = "📋";
+          btn.style.background = "";
+          btn.style.transform = "";
+        }, 1500);
+      } catch (err) {
+        console.error("Erro ao copiar:", err);
+      }
+    });
+
+
+    // Inicializa
+    loadCategories();
+    loadCommands();
+  </script>
+</body>
+</html>
