@@ -54,7 +54,7 @@
   </section>
 
   <script>
-    const API = "http://localhost:5001";
+    const API = window.location.hostname = "localhost" ? "http://localhost:5001" : "https://base-dev-5rfp.onrender.com";
     let editingCommandId = null;
 
     const categorySelect = document.getElementById("category");
