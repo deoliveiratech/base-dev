@@ -54,7 +54,6 @@
   </section>
 
   <script>
-    const API = window.location.hostname === "localhost" ? "http://localhost:5001" : "https://base-dev-5rfp.onrender.com";
     let editingCommandId = null;
 
     const categorySelect = document.getElementById("category");
@@ -69,7 +68,7 @@
 
     // ================== CATEGORIAS ==================
     async function loadCategories() {
-      const res = await fetch(`${API}/categories`);
+      const res = await fetch(`/categories`);
       const categories = await res.json();
 
       [categorySelect, filterCategory].forEach(select => {
@@ -99,7 +98,7 @@
         const name = input.value.trim();
         if (!name) return alert("Digite um nome válido.");
 
-        await fetch(`${API}/categories`, {
+        await fetch(`/categories`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name })
@@ -136,14 +135,14 @@
     const payload = { title, command_text, description, tags, category_name, category_id };
     // Se estiver editando
     if (editingCommandId) {
-      await fetch(`${API}/commands/${editingCommandId}`, {
+      await fetch(`/commands/${editingCommandId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
       alert("Comando atualizado com sucesso!");
     } else {
-      await fetch(`${API}/commands`, {
+      await fetch(`/commands`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -163,7 +162,7 @@
 
     // ================== LISTAR E FILTRAR ==================
     async function loadCommands(filters = {}) {
-      const res = await fetch(`${API}/commands`);
+      const res = await fetch(`/commands`);
       const data = await res.json();
 
       let filtered = data;
